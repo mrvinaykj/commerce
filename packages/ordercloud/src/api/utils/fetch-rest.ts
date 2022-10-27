@@ -3,6 +3,7 @@ import { FetcherError } from '@vercel/commerce/utils/errors'
 import { CustomNodeJsGlobal } from '../../types/node';
 
 import { OrdercloudConfig } from '../index'
+import getUserNameFromEmail from './get-username-from-email'
 
 // Get an instance to vercel fetch
 const fetch = vercelFetch()
@@ -25,6 +26,45 @@ async function getToken({
       Accept: 'application/json',
     },
     body: `client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`,
+  })
+
+  // If something failed getting the auth response
+  if (!authResponse.ok) {
+    // Get the body of it
+    const error = await authResponse.json()
+
+    // And return an error
+    throw new FetcherError({
+      errors: [{ message: error.error_description.Code }],
+      status: error.error_description.HttpStatus,
+    })
+  }
+
+  // Return the token
+  return authResponse
+    .json()
+    .then((response: { access_token: string }) => response.access_token)
+}
+
+async function getUserToken({
+  baseUrl,
+  userName,
+  password,
+}: {
+  baseUrl: string
+  userName: string
+  password?: string
+}): Promise<string> {
+  // If not, get a new one and store it
+  const authResponse = await fetch(`${baseUrl}/oauth/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: `client_id=${
+      process.env.ORDERCLOUD_BUYER_CLIENT_ID as string
+    }&username=${userName}&password=${password}&grant_type=password&scope=Shopper MeAdmin PromotionReader MeCreditCardAdmin BuyerImpersonation`,
   })
 
   // If something failed getting the auth response
@@ -149,7 +189,7 @@ export const createBuyerFetcher: (
     // Get provider config
     const config = getConfig()
 
-
+    
     // If a token was passed, set it on global
     if (fetchOptions?.token) {
       customGlobal.token = fetchOptions.token
@@ -177,4 +217,62 @@ export const createBuyerFetcher: (
       ...data,
       meta: { token: customGlobal.token as string },
     }
+  }
+
+export const createUserFetcher: (
+  getConfig: () => OrdercloudConfig
+) => <T>(
+  method: string,
+  path: string,
+  body?: Record<string, unknown>,
+  fetchOptions?: Record<string, any>
+) => Promise<T> =
+  (getConfig) =>
+  async <T>(
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+    fetchOptions?: Record<string, any>
+  ) => {
+    // Get provider config
+    const config = getConfig()
+    let token = fetchOptions?.token
+
+    if (!fetchOptions?.token && fetchOptions?.email && fetchOptions?.password) {
+      token = await getUserToken({
+        baseUrl: config.commerceUrl,
+        userName: getUserNameFromEmail(fetchOptions?.email as string),
+        password: fetchOptions?.password as string,
+      })
+    }
+
+    // Return the data and specify the expected type
+    const data = await fetchData<T>({
+      token: token as string,
+      fetchOptions,
+      config,
+      method,
+      path,
+      body,
+    })
+    return {
+      ...data,
+      meta: { token: token as string },
+    }
+  }
+
+export const createUserToken: (
+  getConfig: () => OrdercloudConfig
+) => (email: string, password: string) => Promise<string> =
+  (getConfig) => async (email: string, password: string) => {
+    const config = getConfig()
+
+    // Get a token
+    const token = await getUserToken({
+      baseUrl: config.commerceUrl,
+      userName: getUserNameFromEmail(email),
+      password: password as string,
+    })
+    // Return the data and specify the expected type
+    return token as string
   }

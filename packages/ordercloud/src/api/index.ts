@@ -1,6 +1,11 @@
 import type { CommerceAPI, CommerceAPIConfig } from '@vercel/commerce/api'
 import { getCommerceApi as commerceApi } from '@vercel/commerce/api'
-import { createBuyerFetcher, createMiddlewareFetcher } from './utils/fetch-rest'
+import {
+  createBuyerFetcher,
+  createMiddlewareFetcher,
+  createUserFetcher,
+  createUserToken,
+} from './utils/fetch-rest'
 import createGraphqlFetcher from './utils/fetch-graphql'
 
 import getAllPages from './operations/get-all-pages'
@@ -9,6 +14,7 @@ import getSiteInfo from './operations/get-site-info'
 import getAllProductPaths from './operations/get-all-product-paths'
 import getAllProducts from './operations/get-all-products'
 import getProduct from './operations/get-product'
+import login from './operations/login'
 
 import {
   API_URL,
@@ -31,6 +37,13 @@ export interface OrdercloudConfig extends CommerceAPIConfig {
     body?: Record<string, unknown>,
     fetchOptions?: Record<string, any>
   ) => Promise<T>
+  restUserFetch: <T>(
+    method: string,
+    resource: string,
+    body?: Record<string, unknown>,
+    fetchOptions?: Record<string, any>
+  ) => Promise<T>
+  getUserToken: <T>(email: string, password: string) => Promise<string>
   apiVersion: string
   tokenCookie: string
 }
@@ -48,9 +61,12 @@ const config: OrdercloudConfig = {
     getCommerceApi().getConfig()
   ),
   fetch: createGraphqlFetcher(() => getCommerceApi().getConfig()),
+  restUserFetch: createUserFetcher(() => getCommerceApi().getConfig()),
+  getUserToken: createUserToken(() => getCommerceApi().getConfig()),
 }
 
 const operations = {
+  login,
   getAllPages,
   getPage,
   getSiteInfo,
